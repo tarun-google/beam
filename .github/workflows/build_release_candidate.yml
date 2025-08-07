@@ -604,6 +604,7 @@ jobs:
           git config user.email actions@"$RUNNER_NAME".local
           git add -A
           git commit --allow-empty -m "Update managed-io.md for release ${{ github.event.inputs.RELEASE }}."
+          git remote set-url origin "https://x-access-token:${{ github.event.inputs.REPO_TOKEN }}@github.com/tarun-google/beam"
           git push -f --set-upstream origin $BRANCH_NAME
       - name: Create beam PR
         working-directory: beam
