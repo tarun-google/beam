@@ -55,7 +55,7 @@ limitations under the License.
 
 # Managed I/O Connectors
 
-Beam’s new Managed API streamlines how you use existing I/Os, offering both
+[Tarun Test Change]Beam’s new Managed API streamlines how you use existing I/Os, offering both
 simplicity and powerful enhancements. I/Os are now configured through a
 lightweight, consistent interface: a simple configuration map with a unified
 API that spans multiple connectors.

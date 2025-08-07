@@ -560,8 +560,8 @@ jobs:
       - name: Checkout Beam Repo
         uses: actions/checkout@v4
         with:
-          ref: "v${{ github.event.inputs.RELEASE }}-RC${{ github.event.inputs.RC }}"
-          repository: apache/beam
+          ref: "managed_io_test"
+          repository: tarun-google/beam
           path: beam
           token: ${{ github.event.inputs.REPO_TOKEN }}
           persist-credentials: false
@@ -612,4 +612,4 @@ jobs:
           PR_TITLE: "Update managed-io.md for ${{ github.event.inputs.RELEASE }} release"
           PR_BODY: "Content generated from release ${{ github.event.inputs.RELEASE }}."
         run: |
-          gh pr create -t "$PR_TITLE" -b "$PR_BODY" --base master --repo apache/beam
+          gh pr create -t "$PR_TITLE" -b "$PR_BODY" --base master --repo tarun-google/beam
