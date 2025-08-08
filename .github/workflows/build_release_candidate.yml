@@ -598,6 +598,7 @@ jobs:
       - name: Create commit on beam branch
         working-directory: beam
         run: |
+          git fetch origin master
           git checkout -b $BRANCH_NAME origin/master
           mv ${{ runner.temp }}/managed-io.md ${{ env.MANAGED_IO_DOCS_PATH }}
           git config user.name $GITHUB_ACTOR
