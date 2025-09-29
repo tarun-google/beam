@@ -351,12 +351,17 @@ public class PubsubSchemaIOProvider implements SchemaIOProvider {
 
     PayloadSerializer serializer(Schema schema) {
       String format = getFormat() == null ? "json" : getFormat();
-      ImmutableMap.Builder<String, Object> params = ImmutableMap.builder();
-      if (getThriftClass() != null) {
-        params.put("thriftClass", getThriftClass());
+      if (format == null) {
+        format = "json";
       }
-      if (getThriftProtocolFactoryClass() != null) {
-        params.put("thriftProtocolFactoryClass", getThriftProtocolFactoryClass());
+      ImmutableMap.Builder<String, Object> params = ImmutableMap.builder();
+      if ("thrift".equalsIgnoreCase(format)) {
+        if (getThriftClass() != null) {
+          params.put("thriftClass", getThriftClass());
+        }
+        if (getThriftProtocolFactoryClass() != null) {
+          params.put("thriftProtocolFactoryClass", getThriftProtocolFactoryClass());
+        }
       }
       if (getProtoClass() != null) {
         params.put("protoClass", getProtoClass());

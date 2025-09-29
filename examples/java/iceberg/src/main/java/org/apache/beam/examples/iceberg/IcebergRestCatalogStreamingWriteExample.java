@@ -281,7 +281,7 @@ public class IcebergRestCatalogStreamingWriteExample {
 
     @Description("The iceberg table to write to.")
     @Validation.Required
-    @Default.String("taxi_dataset.ride_metrics_by_minute")
+    @Default.String("taxi_dataset_demo.ride_metrics_by_minute")
     String getIcebergTable();
 
     void setIcebergTable(String value);

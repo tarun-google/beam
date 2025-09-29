@@ -1,0 +1,66 @@
+pipeline:
+  type: chain
+  transforms:
+    - type: IcebergCDCRead
+      name: "Read CDC events from Iceberg"
+      config:
+        table: "taxi_dataset_demo.ride_metrics_by_minute"
+        catalog_name: "taxi_rides"
+        catalog_properties:
+          type: "rest"
+          uri: "https://biglake.googleapis.com/iceberg/v1beta/restcatalog"
+          warehouse: "gs://biglake_taxi_ride_metrics"
+          header.x-goog-user-project: "apache-beam-testing"
+          rest.auth.type: "org.apache.iceberg.gcp.auth.GoogleAuthManager"
+          rest-metrics-reporting-enabled: "false"
+        poll_interval_seconds: 30
+        streaming: true
+        filter: '"ride_minute" IS NOT NULL AND "passenger_count" IS NOT NULL'
+        keep:
+          - "ride_minute"
+          - "passenger_count"
+
+    - type: MapToFields
+      name: "Extract ride hour string"
+      config:
+        language: python
+        fields:
+          ride_hour:
+            callable: |
+              def fn(row):
+                dt = row.ride_minute.to_datetime()
+                return dt.strftime('%Y-%m-%d %H:00:00')
+            output_type: string
+          passenger_count:
+            expression: passenger_count
+            output_type: integer
+    - type: WindowInto
+      name: "Window into hourly windows"
+      config:
+        windowing:
+          type: fixed
+          size: 3600
+    - type: Combine
+      name: "Sum passenger counts per hour"
+      config:
+        group_by:
+          - ride_hour
+        combine:
+          passenger_count: sum
+
+    - type: WriteToIceberg
+      name: "Write aggregated data to Iceberg"
+      config:
+        table: "taxi_dataset_demo.passenger_count_by_hour"
+        catalog_name: "taxi_rides"
+        catalog_properties:
+          type: "rest"
+          uri: "https://biglake.googleapis.com/iceberg/v1beta/restcatalog"
+          warehouse: "gs://biglake_taxi_ride_metrics"
+          header.x-goog-user-project: "apache-beam-testing"
+          rest.auth.type: "org.apache.iceberg.gcp.auth.GoogleAuthManager"
+          rest-metrics-reporting-enabled: "false"
+        triggering_frequency_seconds: 30
+
+options:
+  streaming: true

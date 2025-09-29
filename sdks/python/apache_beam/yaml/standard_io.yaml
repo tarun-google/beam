@@ -97,6 +97,25 @@
           'ReadFromKafka': '2.65.0'
           'WriteToKafka': '2.65.0'
 
+- type: renaming
+  transforms:
+   'IcebergCDCRead': 'IcebergCDCRead'
+  config:
+    mappings:
+      'IcebergCDCRead':
+        table: 'table'
+        catalog_name: 'catalog_name'
+        catalog_properties: 'catalog_properties'
+        poll_interval_seconds: 'poll_interval_seconds'
+        filter: 'filter'
+        keep: 'keep'
+    underlying_provider:
+      type: beamJar
+      transforms:
+        'IcebergCDCRead': 'beam:schematransform:org.apache.beam:iceberg_cdc_read:v1'
+      config:
+        gradle_target: 'sdks:java:io:expansion-service:shadowJar'
+
 # PubSub
 - type: renaming
   transforms:

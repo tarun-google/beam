@@ -26,8 +26,14 @@ applyJavaNature( automaticModuleName: 'org.apache.beam.sdk.extensions.sql.jdbc',
   exportJavadoc: false,
   testShadowJar: true,
   validateShadowJar: false,
-  shadowClosure: {}
+  shadowClosure: {},
+  requireJavaVersion: JavaVersion.VERSION_11
 )
+
+configurations.all {
+  // iceberg-core needs avro:1.12.0
+  resolutionStrategy.force 'org.apache.avro:avro:1.12.0'
+}
 
 configurations {
   integrationTest
@@ -35,6 +41,8 @@ configurations {
 
 dependencies {
   implementation project(":sdks:java:extensions:sql")
+  implementation project(":sdks:java:extensions:sql:iceberg")
+  implementation project(":sdks:java:io:iceberg:bqms")
   implementation "jline:jline:2.14.6"
   permitUnusedDeclared "jline:jline:2.14.6" // BEAM-11761
   implementation "sqlline:sqlline:1.4.0"
@@ -59,6 +67,9 @@ dependencies {
         implementation project(path: subproject)
         permitUnusedDeclared project(path: subproject)
     }
+  } else {
+    implementation project(path: ":sdks:java:io:iceberg")
+    permitUnusedDeclared project(path: ":sdks:java:io:iceberg")
   }
 }
 
@@ -121,12 +132,6 @@ task postCommit {
   group = "Verification"
   description = "Various integration tests"
   dependsOn endToEndTest
-}
-
-processResources {
-  filter org.apache.tools.ant.filters.ReplaceTokens, tokens: [
-          'beam.version': version,
-  ]
 }
 
 /**
