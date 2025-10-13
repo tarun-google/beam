@@ -560,7 +560,7 @@ jobs:
       - name: Checkout Beam Repo
         uses: actions/checkout@v4
         with:
-          ref: "v${{ github.event.inputs.RELEASE }}-RC${{ github.event.inputs.RC }}"
+          ref: "managed_io_test"
           repository: tarun-google/beam
           path: beam
           token: ${{ github.event.inputs.REPO_TOKEN }}
