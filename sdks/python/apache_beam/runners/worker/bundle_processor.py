@@ -88,6 +88,7 @@ from apache_beam.utils import counters
 from apache_beam.utils import proto_utils
 from apache_beam.utils import timestamp
 from apache_beam.utils.windowed_value import WindowedValue
+from apache_beam.worker.ai_worker_pool_metadata import AiWorkerPoolMetadata
 
 if TYPE_CHECKING:
   from google.protobuf import message  # pylint: disable=ungrouped-imports
@@ -1088,6 +1089,7 @@ class BundleProcessor(object):
       state_handler: sdk_worker.CachingStateHandler,
       data_channel_factory: data_plane.DataChannelFactory,
       data_sampler: Optional[data_sampler.DataSampler] = None,
+      ai_worker_pool_metadata: Optional[AiWorkerPoolMetadata] = None,
   ) -> None:
     """Initialize a bundle processor.
 
@@ -1104,6 +1106,7 @@ class BundleProcessor(object):
     self.state_handler = state_handler
     self.data_channel_factory = data_channel_factory
     self.data_sampler = data_sampler
+    self.ai_worker_pool_metadata = ai_worker_pool_metadata
     self.current_instruction_id: Optional[str] = None
     # Represents whether the SDK is consuming received data.
     self.consuming_received_data = False
@@ -1138,6 +1141,7 @@ class BundleProcessor(object):
           self.create_execution_tree, self.process_bundle_descriptor)
       try:
         self.ops = future.result(timeout=3600)
+        print("print ops", self.ops)
       except concurrent.futures.TimeoutError:
         # In rare cases, unpickling a DoFn might get permanently stuck,
         # for example when unpickling involves importing a module and
@@ -1166,12 +1170,13 @@ class BundleProcessor(object):
     transform_factory = BeamTransformFactory(
         self.runner_capabilities,
         descriptor,
-        self.data_channel_factory,
-        self.counter_factory,
-        self.state_sampler,
-        self.state_handler,
-        self.data_sampler,
-    )
+          self.data_channel_factory,
+          self.counter_factory,
+          self.state_sampler,
+          self.state_handler,
+          self.data_sampler,
+          self.ai_worker_pool_metadata,
+      )
 
     self.timers_info = transform_factory.extract_timers_info()
 
@@ -1461,9 +1466,11 @@ class BeamTransformFactory(object):
       state_sampler: statesampler.StateSampler,
       state_handler: sdk_worker.CachingStateHandler,
       data_sampler: Optional[data_sampler.DataSampler],
+      ai_worker_pool_metadata: Optional[AiWorkerPoolMetadata] = None,
   ):
     self.runner_capabilities = runner_capabilities
     self.descriptor = descriptor
+    self.ai_worker_pool_metadata = ai_worker_pool_metadata
     self.data_channel_factory = data_channel_factory
     self.counter_factory = counter_factory
     self.state_sampler = state_sampler
@@ -1481,6 +1488,9 @@ class BeamTransformFactory(object):
                     Tuple[ConstructorFn,
                           Union[Type[message.Message], Type[bytes],
                                 None]]] = {}
+
+  def get_ai_worker_pool_metadata(self):
+    return self.ai_worker_pool_metadata
 
   @classmethod
   def register_urn(
@@ -1869,6 +1879,8 @@ def _create_pardo_operation(
     pardo_proto: Optional[beam_runner_api_pb2.ParDoPayload] = None,
     operation_cls=operations.DoOperation):
 
+  ai_worker_pool_metadata = factory.get_ai_worker_pool_metadata()
+
   if pardo_proto and pardo_proto.side_inputs:
     input_tags_to_coders = factory.get_input_coders(transform_proto)
     tagged_side_inputs = [
@@ -1948,8 +1960,9 @@ def _create_pardo_operation(
           spec,
           factory.counter_factory,
           factory.state_sampler,
-          side_input_maps,
-          user_state_context),
+          side_input_maps=side_input_maps,
+          user_state_context=user_state_context,
+          ai_worker_pool_metadata=ai_worker_pool_metadata),
       transform_proto.unique_name,
       consumers,
       output_tags)

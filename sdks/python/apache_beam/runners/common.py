@@ -63,6 +63,7 @@ from apache_beam.utils.timestamp import Timestamp
 from apache_beam.utils.windowed_value import HomogeneousWindowedBatch
 from apache_beam.utils.windowed_value import WindowedBatch
 from apache_beam.utils.windowed_value import WindowedValue
+from apache_beam.worker.ai_worker_pool_metadata import AiWorkerPoolMetadata
 
 if TYPE_CHECKING:
   from apache_beam.runners.worker.bundle_processor import ExecutionContext
@@ -1416,6 +1417,7 @@ class DoFnRunner:
       operation_name=None,
       transform_id=None,
       user_state_context=None,  # type: Optional[userstate.UserStateContext]
+      ai_worker_pool_metadata: Optional[AiWorkerPoolMetadata] = None,
   ):
     """Initializes a DoFnRunner.
 
@@ -1443,6 +1445,7 @@ class DoFnRunner:
     self.context = DoFnContext(step_name, state=state)
     self.bundle_finalizer_param = DoFn.BundleFinalizerParam()
     self.execution_context = None  # type: Optional[ExecutionContext]
+    self.ai_worker_pool_metadata = ai_worker_pool_metadata
 
     do_fn_signature = DoFnSignature(fn)
 

@@ -69,6 +69,7 @@ from apache_beam.runners.worker.worker_status import FnApiWorkerStatusHandler
 from apache_beam.utils import thread_pool_executor
 from apache_beam.utils.sentinel import Sentinel
 from apache_beam.version import __version__ as beam_version
+from apache_beam.worker.ai_worker_pool_metadata import AiWorkerPoolMetadata
 
 if TYPE_CHECKING:
   from apache_beam.portability.api import endpoints_pb2
@@ -181,6 +182,7 @@ class SdkHarness(object):
     # type: (...) -> None
     self._alive = True
     self._worker_index = 0
+    self._ai_worker_pool_metadata = None  # type: Optional[AiWorkerPoolMetadata]
     self._worker_id = worker_id
     self._state_cache = StateCache(state_cache_size)
     self._deferred_exception = deferred_exception
@@ -393,6 +395,14 @@ class SdkHarness(object):
     _LOGGER.debug(
         "Currently using %s threads." % len(self._worker_thread_pool._workers))
 
+  def _request_ai_worker_pool_metadata(self, request):
+    # type: (beam_fn_api_pb2.InstructionRequest) -> None
+    self._ai_worker_pool_metadata = AiWorkerPoolMetadata(
+        external_ip=request.ai_worker_pool_metadata.external_ip,
+        external_port=request.ai_worker_pool_metadata.external_port)
+    self._responses.put(
+        beam_fn_api_pb2.InstructionResponse(instruction_id=request.instruction_id))
+
   def _request_sample_data(self, request):
     # type: (beam_fn_api_pb2.InstructionRequest) -> None
 
@@ -410,7 +420,9 @@ class SdkHarness(object):
   def create_worker(self):
     # type: () -> SdkWorker
     return SdkWorker(
-        self._bundle_processor_cache, profiler_factory=self._profiler_factory)
+        self._bundle_processor_cache,
+        profiler_factory=self._profiler_factory,
+        ai_worker_pool_metadata=self._ai_worker_pool_metadata)
 
 
 class BundleProcessorCache(object):
@@ -481,8 +493,13 @@ class BundleProcessorCache(object):
     with self._lock:
       self.known_not_running_instruction_ids[instruction_id] = True
 
-  def get(self, instruction_id, bundle_descriptor_id):
-    # type: (str, str) -> bundle_processor.BundleProcessor
+  def get(
+      self,
+      instruction_id,  # type: str
+      bundle_descriptor_id,  # type: str
+      ai_worker_pool_metadata=None,  # type: Optional[AiWorkerPoolMetadata]
+  ):
+    # type: (...) -> bundle_processor.BundleProcessor
 
     """
     Return the requested ``BundleProcessor``, creating it if necessary.
@@ -520,7 +537,8 @@ class BundleProcessorCache(object):
         self.state_handler_factory.create_state_handler(
             pbd.state_api_service_descriptor),
         self.data_channel_factory,
-        self.data_sampler)
+        self.data_sampler,
+        ai_worker_pool_metadata=ai_worker_pool_metadata)
     with self._lock:
       self.active_bundle_processors[
         instruction_id] = bundle_descriptor_id, processor
@@ -656,10 +674,12 @@ class SdkWorker(object):
       self,
       bundle_processor_cache,  # type: BundleProcessorCache
       profiler_factory=None,  # type: Optional[Callable[..., Profile]]
+      ai_worker_pool_metadata=None,  # type: Optional[AiWorkerPoolMetadata]
   ):
     # type: (...) -> None
     self.bundle_processor_cache = bundle_processor_cache
     self.profiler_factory = profiler_factory
+    self.ai_worker_pool_metadata = ai_worker_pool_metadata
 
   def do_instruction(self, request):
     # type: (beam_fn_api_pb2.InstructionRequest) -> beam_fn_api_pb2.InstructionResponse
@@ -699,7 +719,9 @@ class SdkWorker(object):
     # type: (...) -> beam_fn_api_pb2.InstructionResponse
     try:
       bundle_processor = self.bundle_processor_cache.get(
-          instruction_id, request.process_bundle_descriptor_id)
+          instruction_id,
+          request.process_bundle_descriptor_id,
+          self.ai_worker_pool_metadata)
       with bundle_processor.state_handler.process_instruction_id(
           instruction_id, request.cache_tokens):
         with self.maybe_profile(instruction_id):

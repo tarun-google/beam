@@ -85,6 +85,7 @@ if typing.TYPE_CHECKING:
   from apache_beam.transforms.trigger import AccumulationMode
   from apache_beam.transforms.trigger import DefaultTrigger
   from apache_beam.transforms.trigger import TriggerFn
+  from apache_beam.worker.ai_worker_pool_metadata import AiWorkerPoolMetadata
 
 __all__ = [
     'DoFn',
@@ -625,6 +626,7 @@ class DoFn(WithTypeHints, HasDisplayData, urns.RunnerApiFn):
   StateParam = _StateDoFnParam
   TimerParam = _TimerDoFnParam
   DynamicTimerTagParam = _DoFnParam('DynamicTimerTagParam')
+  AiWorkerPoolMetadataParam = _DoFnParam('AiWorkerPoolMetadataParam')
 
   DoFnProcessParams = [
       ElementParam,
@@ -640,6 +642,7 @@ class DoFn(WithTypeHints, HasDisplayData, urns.RunnerApiFn):
       TimerParam,
       BundleContextParam,
       SetupContextParam,
+      AiWorkerPoolMetadataParam,
   ]
 
   RestrictionParam = _RestrictionDoFnParam

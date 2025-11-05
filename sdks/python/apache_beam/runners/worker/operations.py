@@ -1,4 +1,3 @@
-#
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
 # this work for additional information regarding copyright ownership.
@@ -61,6 +60,7 @@ from apache_beam.transforms.window import GlobalWindows
 from apache_beam.typehints.batch import BatchConverter
 from apache_beam.utils.windowed_value import WindowedBatch
 from apache_beam.utils.windowed_value import WindowedValue
+from apache_beam.worker.ai_worker_pool_metadata import AiWorkerPoolMetadata
 
 if TYPE_CHECKING:
   from apache_beam.runners.sdf_utils import SplitResultPrimary
@@ -92,7 +92,7 @@ SdfSplitResultsResidual = Tuple['DoOperation', 'SplitResultResidual']
 # TODO(BEAM-9324) Remove these workarounds once upgraded to Cython 3
 def _cast_to_operation(value):
   if cython.compiled:
-    return cython.cast(Operation, value)
+    return value
   else:
     return value
 
@@ -100,7 +100,7 @@ def _cast_to_operation(value):
 # TODO(BEAM-9324) Remove these workarounds once upgraded to Cython 3
 def _cast_to_receiver(value):
   if cython.compiled:
-    return cython.cast(Receiver, value)
+    return value
   else:
     return value
 
@@ -415,6 +415,25 @@ class Operation(object):
   An operation can have one or more outputs and for each output it can have
   one or more receiver operations that will take that as input.
   """
+  __slots__ = (
+      'name_context',
+      'spec',
+      'counter_factory',
+      'execution_context',
+      'consumers',
+      'metrics_container',
+      'state_sampler',
+      'scoped_start_state',
+      'scoped_process_state',
+      'scoped_finish_state',
+      'receivers',
+      'setup_done',
+      'step_name',
+      'data_sampler',
+      'ai_worker_pool_metadata',  # Add this attribute to __slots__
+      'debug_logging_enabled'
+  )
+
   def __init__(
       self,
       name_context,  # type: common.NameContext
@@ -802,10 +821,12 @@ class DoOperation(Operation):
       sampler,
       side_input_maps=None,
       user_state_context=None,
+      ai_worker_pool_metadata=None,
   ):
     super(DoOperation, self).__init__(name, spec, counter_factory, sampler)
     self.side_input_maps = side_input_maps
     self.user_state_context = user_state_context
+    self.ai_worker_pool_metadata = ai_worker_pool_metadata
     self.tagged_receivers = None  # type: Optional[_TaggedReceivers]
     # A mapping of timer tags to the input "PCollections" they come in on.
     self.input_info = None  # type: Optional[OpInputInfo]
@@ -921,7 +942,8 @@ class DoOperation(Operation):
           state=state,
           user_state_context=self.user_state_context,
           transform_id=self.name_context.transform_id,
-          operation_name=self.name_context.metrics_name())
+          operation_name=self.name_context.metrics_name(),
+          ai_worker_pool_metadata=self.ai_worker_pool_metadata)
       self.dofn_runner.setup()
 
   def start(self):
@@ -1378,13 +1400,23 @@ def create_operation(
       op = ReadOperation(
           name_context, spec, counter_factory, state_sampler)  # type: Operation
     else:
-      from dataflow_worker.native_operations import NativeReadOperation
-      op = NativeReadOperation(
-          name_context, spec, counter_factory, state_sampler)
+      try:
+        from dataflow_worker.native_operations import NativeReadOperation
+        op = NativeReadOperation(
+            name_context, spec, counter_factory, state_sampler)
+      except ImportError:
+        raise TypeError(
+            'Expected an instance of operation_specs.Worker* class '
+            'instead of %s (dataflow_worker not found)' % (spec, ))
   elif isinstance(spec, operation_specs.WorkerWrite):
-    from dataflow_worker.native_operations import NativeWriteOperation
-    op = NativeWriteOperation(
-        name_context, spec, counter_factory, state_sampler)
+    try:
+      from dataflow_worker.native_operations import NativeWriteOperation
+      op = NativeWriteOperation(
+          name_context, spec, counter_factory, state_sampler)
+    except ImportError:
+      raise TypeError(
+          'Expected an instance of operation_specs.Worker* class '
+          'instead of %s (dataflow_worker not found)' % (spec, ))
   elif isinstance(spec, operation_specs.WorkerCombineFn):
     op = CombineOperation(name_context, spec, counter_factory, state_sampler)
   elif isinstance(spec, operation_specs.WorkerPartialGroupByKey):
@@ -1392,47 +1424,72 @@ def create_operation(
   elif isinstance(spec, operation_specs.WorkerDoFn):
     op = DoOperation(name_context, spec, counter_factory, state_sampler)
   elif isinstance(spec, operation_specs.WorkerGroupingShuffleRead):
-    from dataflow_worker.shuffle_operations import GroupedShuffleReadOperation
-    op = GroupedShuffleReadOperation(
-        name_context,
-        spec,
-        counter_factory,
-        state_sampler,
-        shuffle_source=test_shuffle_source)
+    try:
+      from dataflow_worker.shuffle_operations import GroupedShuffleReadOperation
+      op = GroupedShuffleReadOperation(
+          name_context,
+          spec,
+          counter_factory,
+          state_sampler,
+          shuffle_source=test_shuffle_source)
+    except ImportError:
+      raise TypeError(
+          'Expected an instance of operation_specs.Worker* class '
+          'instead of %s (dataflow_worker not found)' % (spec, ))
   elif isinstance(spec, operation_specs.WorkerUngroupedShuffleRead):
-    from dataflow_worker.shuffle_operations import UngroupedShuffleReadOperation
-    op = UngroupedShuffleReadOperation(
-        name_context,
-        spec,
-        counter_factory,
-        state_sampler,
-        shuffle_source=test_shuffle_source)
+    try:
+      from dataflow_worker.shuffle_operations import UngroupedShuffleReadOperation
+      op = UngroupedShuffleReadOperation(
+          name_context,
+          spec,
+          counter_factory,
+          state_sampler,
+          shuffle_source=test_shuffle_source)
+    except ImportError:
+      raise TypeError(
+          'Expected an instance of operation_specs.Worker* class '
+          'instead of %s (dataflow_worker not found)' % (spec, ))
   elif isinstance(spec, operation_specs.WorkerInMemoryWrite):
     op = InMemoryWriteOperation(
         name_context, spec, counter_factory, state_sampler)
   elif isinstance(spec, operation_specs.WorkerShuffleWrite):
-    from dataflow_worker.shuffle_operations import ShuffleWriteOperation
-    op = ShuffleWriteOperation(
-        name_context,
-        spec,
-        counter_factory,
-        state_sampler,
-        shuffle_sink=test_shuffle_sink)
+    try:
+      from dataflow_worker.shuffle_operations import ShuffleWriteOperation
+      op = ShuffleWriteOperation(
+          name_context,
+          spec,
+          counter_factory,
+          state_sampler,
+          shuffle_sink=test_shuffle_sink)
+    except ImportError:
+      raise TypeError(
+          'Expected an instance of operation_specs.Worker* class '
+          'instead of %s (dataflow_worker not found)' % (spec, ))
   elif isinstance(spec, operation_specs.WorkerFlatten):
     op = FlattenOperation(name_context, spec, counter_factory, state_sampler)
   elif isinstance(spec, operation_specs.WorkerMergeWindows):
-    from dataflow_worker.shuffle_operations import BatchGroupAlsoByWindowsOperation
-    from dataflow_worker.shuffle_operations import StreamingGroupAlsoByWindowsOperation
-    if is_streaming:
-      op = StreamingGroupAlsoByWindowsOperation(
-          name_context, spec, counter_factory, state_sampler)
-    else:
-      op = BatchGroupAlsoByWindowsOperation(
-          name_context, spec, counter_factory, state_sampler)
+    try:
+      from dataflow_worker.shuffle_operations import BatchGroupAlsoByWindowsOperation
+      from dataflow_worker.shuffle_operations import StreamingGroupAlsoByWindowsOperation
+      if is_streaming:
+        op = StreamingGroupAlsoByWindowsOperation(
+            name_context, spec, counter_factory, state_sampler)
+      else:
+        op = BatchGroupAlsoByWindowsOperation(
+            name_context, spec, counter_factory, state_sampler)
+    except ImportError:
+      raise TypeError(
+          'Expected an instance of operation_specs.Worker* class '
+          'instead of %s (dataflow_worker not found)' % (spec, ))
   elif isinstance(spec, operation_specs.WorkerReifyTimestampAndWindows):
-    from dataflow_worker.shuffle_operations import ReifyTimestampAndWindowsOperation
-    op = ReifyTimestampAndWindowsOperation(
-        name_context, spec, counter_factory, state_sampler)
+    try:
+      from dataflow_worker.shuffle_operations import ReifyTimestampAndWindowsOperation
+      op = ReifyTimestampAndWindowsOperation(
+          name_context, spec, counter_factory, state_sampler)
+    except ImportError:
+      raise TypeError(
+          'Expected an instance of operation_specs.Worker* class '
+          'instead of %s (dataflow_worker not found)' % (spec, ))
   else:
     raise TypeError(
         'Expected an instance of operation_specs.Worker* class '
