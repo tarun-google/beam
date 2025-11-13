@@ -153,10 +153,19 @@ runs:
           --health-retries=${HR} \
           --health-start-period=${HSP} \
           docker:dind \
+            dockerd \
             --host=tcp://0.0.0.0:${PORT} \
             --host=unix:///var/run/docker.sock \
             --storage-driver=${SD} \
-            --exec-root=/execroot ${EXTRA}
+            --exec-root=/execroot ${EXTRA} &
+
+        # Wait for dockerd to start and then configure sysctl
+        sleep 5 # Give dockerd a moment to start
+        docker exec "$NAME" sh -c "sysctl -w net.ipv4.ip_forward=1"
+        docker exec "$NAME" sh -c "sysctl -w net.ipv6.conf.all.forwarding=1"
+
+        # Wait for the dockerd process to finish (it should be running in the background)
+        wait $!
 
         {
           echo "STORAGE_VOL=${STORAGE_VOL}"
@@ -206,20 +215,20 @@ runs:
       run: |
         set -euo pipefail
         NAME="${{ inputs.container-name || 'dind-daemon' }}"
-        
+
         # Use host daemon to inspect the DinD container
         nm=$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$NAME")
         echo "DinD NetworkMode=${nm}"
 
         # Try to find the bridge network IP
         ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$NAME" || true)
-        
+
         # If still empty, likely host networking -> use loopback
         if [[ -z "${ip}" || "${nm}" == "host" ]]; then
           echo "No bridge IP found or using host network. Falling back to 127.0.0.1."
           ip="127.0.0.1"
         fi
-        
+
         echo "Discovered DinD IP: ${ip}"
         echo "dind-ip=${ip}" >> "$GITHUB_OUTPUT"
 
@@ -237,7 +246,7 @@ runs:
         hostport=$(docker port redis-smoke 6379/tcp | sed 's/.*://')
         echo "Redis container started, mapped to host port ${hostport}"
         echo "Probing connection to ${DIND_IP}:${hostport} ..."
-        
+
         timeout 5 bash -c 'exec 3<>/dev/tcp/$DIND_IP/'"$hostport"
         if [[ $? -eq 0 ]]; then
           echo "TCP connection successful. Port mapping is working."

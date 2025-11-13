@@ -71,7 +71,7 @@ jobs:
         # self-hosted runners due to Docker-in-Docker environment constraint.
         # These tests will only execute on ubuntu-latest (GitHub-hosted).
         # Context: https://github.com/apache/beam/pull/35585
-        os: [[self-hosted, ubuntu-20.04, highmem], [ubuntu-latest]]
+        os: [[ubuntu-latest]] # Temporarily run only on ubuntu-latest for debugging
     timeout-minutes: 180
     if: |
       github.event_name == 'push' ||
@@ -95,7 +95,7 @@ jobs:
       - name: Start DinD
         uses: ./.github/actions/dind-up-action
         id: dind
-        if: contains(matrix.os, 'self-hosted')
+        # if: contains(matrix.os, 'self-hosted') # Removed condition to run on ubuntu-latest
         with:
           # Enable all the new features
           cleanup-dind-on-start: "true"
