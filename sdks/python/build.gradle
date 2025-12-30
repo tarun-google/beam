@@ -29,9 +29,10 @@ def buildPython = tasks.register("buildPython") {
   doLast {
     logger.info('Building Python Dependencies')
     exec {
+      environment 'PIP_EXTRA_INDEX_URL', 'https://pypi.org/simple'
       executable 'sh'
       // args '-c', ". ${envdir}/bin/activate && python setup.py build --build-base ${buildDir}"
-      args '-c', ". ${envdir}/bin/activate && pip install -e ."
+      args '-c', ". ${envdir}/bin/activate && pip install -e . --extra-index-url https://pypi.org/simple"
     }
   }
 }
@@ -45,9 +46,34 @@ def sdist = tasks.register("sdist") {
 
   doLast {
     // Build artifact
+    // Install build dependencies
     exec {
+      environment 'PIP_EXTRA_INDEX_URL', 'https://pypi.org/simple'
       executable 'sh'
-      args '-c', ". ${envdir}/bin/activate && pip install -U build && python -m build --sdist --outdir=${buildDir}"
+      args '-c', ". ${envdir}/bin/activate && pip install -U build --extra-index-url https://pypi.org/simple"
+    }
+
+    // Install required build dependencies manually
+    exec {
+      environment 'PIP_EXTRA_INDEX_URL', 'https://pypi.org/simple'
+      executable 'sh'
+      args '-c', ". ${envdir}/bin/activate && " +
+              "pip install 'setuptools' 'wheel>=0.36.0' 'mypy-protobuf==3.5.0' 'distlib==0.3.9' 'numpy>=1.14.3,<2.4.0' 'cython>=3.0,<4' 'pyyaml>=3.12,<7.0.0' 'jinja2>=2.7.1,<4.0.0' 'yapf==0.43.0' --extra-index-url https://pypi.org/simple"
+    }
+
+    // Install grpcio-tools conditionally
+    exec {
+      environment 'PIP_EXTRA_INDEX_URL', 'https://pypi.org/simple'
+      executable 'sh'
+      args '-c', ". ${envdir}/bin/activate && " +
+               "python -c \"import sys; pkg='grpcio-tools==1.71.0' if sys.version_info >= (3, 13) else 'grpcio-tools==1.62.1'; import subprocess; subprocess.check_call([sys.executable, '-m', 'pip', 'install', pkg, '--extra-index-url', 'https://pypi.org/simple'])\""
+    }
+
+    // Run build with --no-isolation
+    exec {
+      environment 'PIP_EXTRA_INDEX_URL', 'https://pypi.org/simple'
+      executable 'sh'
+      args '-c', "rm -f ${buildDir}/*.tar.gz && . ${envdir}/bin/activate && python -m build --sdist --no-isolation --skip-dependency-check --outdir=${buildDir}"
     }
 
     def collection = fileTree(buildDir){ include "**/*${project.sdk_version}*.tar.gz" exclude 'srcs/**'}
@@ -79,7 +105,7 @@ tasks.register("generateExternalTransformsConfig") {
   doLast {
     exec {
       executable 'sh'
-      args '-c', "pip install $PyYaml && " +
+      args '-c', "pip install $PyYaml --extra-index-url https://pypi.org/simple && " +
               "python gen_xlang_wrappers.py --cleanup --generate-config-only"
     }
   }
@@ -116,7 +142,7 @@ tasks.register("generateYamlDocs") {
   doLast {
     exec {
       executable 'sh'
-      args '-c', "${envdir}/bin/pip install $extraPackages && " +
+      args '-c', "${envdir}/bin/pip install $extraPackages --extra-index-url https://pypi.org/simple && " +
               "${envdir}/bin/python -m apache_beam.yaml.generate_yaml_docs --html_file=${buildDir}/yaml-ref.html --examples_file=${buildDir}/yaml-examples.html"
     }
   }
@@ -220,7 +246,7 @@ platform_identifiers_map.each { platform, idsuffix ->
              args '-c', ". ${envdir}/bin/activate && " +
                  // note: sync cibuildwheel version with GitHub Action
                  // .github/workflows/build_wheel.yml:build_wheels "Install cibuildwheel" step
-                 "pip install cibuildwheel==2.23.3 setuptools && " +
+                 "pip install cibuildwheel==2.23.3 setuptools --extra-index-url https://pypi.org/simple && " +
                  "cibuildwheel --print-build-identifiers --platform ${platform} --archs ${archs} && " +
                  "cibuildwheel --output-dir ${buildDir} --platform ${platform} --archs ${archs} "
            }
