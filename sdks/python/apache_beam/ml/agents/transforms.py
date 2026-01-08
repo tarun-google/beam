@@ -24,6 +24,8 @@ import os
 import apache_beam as beam
 from apache_beam.utils import shared
 from apache_beam.metrics import Metrics
+from apache_beam.transforms.userstate import ReadModifyWriteStateSpec
+from apache_beam.coders import PickleCoder
 from typing import Callable, Any, Optional, Tuple, NamedTuple, List, Union
 
 from google.adk.agents import Agent
@@ -94,6 +96,10 @@ class RunAgent(beam.PTransform):
         return output.output
 
     class _ADKRunnerFn(beam.DoFn):
+        SESSION_STATE = ReadModifyWriteStateSpec('session', PickleCoder())
+        _APP_NAME = "beam_agent_app"
+        _USER_ID = "beam_worker"
+        
         def __init__(self, model_name, project, location, tools, instruction):
             self._model_name = model_name
             self._project = project
@@ -133,25 +139,23 @@ class RunAgent(beam.PTransform):
             def init_shared_runner():
                 agent = self._agent_instance
                 session_service = InMemorySessionService()
-                app_name = "beam_agent_app"
                 
                 return Runner(
                     agent=agent, 
-                    app_name=app_name, 
+                    app_name=self._APP_NAME, 
                     session_service=session_service
                 )
 
             # Acquiring the shared runner
             self._runner = self._shared_handle.acquire(init_shared_runner)
-            self._user_id = "beam_worker"
 
-        def process(self, element):
+        def process(self, element, session_state=beam.DoFn.StateParam(SESSION_STATE)):
             # Default Session ID
             session_id = str(uuid.uuid4())
             user_query = element
             
             # Keyed Input Detection (Tuple of 2) -> (Key, Query)
-            # Use Key as Session ID
+            # Use Key as Session ID if available
             if isinstance(element, (tuple, list)) and len(element) == 2:
                 possible_key, possible_query = element
                 if isinstance(possible_key, str):
@@ -163,37 +167,67 @@ class RunAgent(beam.PTransform):
                  if hasattr(user_query, 'contents'):
                      user_query = user_query.contents
             
-            self._ensure_session(session_id)
-            
-            # Run ADK Logic
             try:
+                # Restore Session from State and
+                # Sync with InMemorySessionService
+                cached_session = session_state.read()
+                self._ensure_session(session_id, cached_session)
+                
+                # Run ADK Logic
                 final_text = asyncio.run(self._run_adk(user_query, session_id))
                 self._success_counter.inc()
+                
+                # Read back updated session and persist
+                updated_session = asyncio.run(self._get_session(session_id))
+                session_state.write(updated_session)
+                
                 yield AgentOutput(final_text=final_text, session_id=session_id)
+                
             except Exception as e:
                 logging.error(f"ADK Execution failed: {e}")
                 self._failure_counter.inc()
                 # Yield to DLQ -> (Element, ErrorMsg)
                 yield beam.pvalue.TaggedOutput(self._dead_letter_tag, (element, str(e)))
 
-        def _ensure_session(self, session_id):
-            """Ensures session exists in the shared service for this ID."""
+        def _ensure_session(self, session_id, existing_session=None):
+            """Ensures session exists in the shared service for this ID, populated with existing_session data if provided."""
             try:
                 loop = asyncio.get_event_loop()
             except RuntimeError:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
             
-            try:
-                loop.run_until_complete(
-                    self._runner.session_service.create_session(
-                        app_name="beam_agent_app",
-                        user_id=self._user_id,
+            async def _create_or_update():
+                # If we have existing session state, inject it
+                if existing_session:
+                    if hasattr(self._runner.session_service, 'sessions'):
+                        self._runner.session_service.sessions.setdefault(self._APP_NAME, {}).setdefault(self._USER_ID, {})[session_id] = existing_session
+                
+                if not await self._runner.session_service.get_session(
+                    app_name=self._APP_NAME,
+                    user_id=self._USER_ID,
+                    session_id=session_id
+                ):
+                     await self._runner.session_service.create_session(
+                        app_name=self._APP_NAME,
+                        user_id=self._USER_ID,
                         session_id=session_id
                     )
-                )
-            except Exception:
-                pass
+            
+            try:
+                loop.run_until_complete(_create_or_update())
+            except Exception as e:
+                logging.error(f"Failed to ensure session {session_id}: {e}")
+                raise
+
+        async def _get_session(self, session_id):
+            """Retrieves the session object from the service to be pickled."""
+            session = await self._runner.session_service.get_session(
+                app_name=self._APP_NAME,
+                user_id=self._USER_ID,
+                session_id=session_id
+            )
+            return session
 
         async def _run_adk(self, query, session_id):
             if isinstance(query, str):
@@ -203,7 +237,7 @@ class RunAgent(beam.PTransform):
             
             # Use the shared runner with specific Session ID
             events = self._runner.run(
-                user_id=self._user_id, 
+                user_id=self._USER_ID, 
                 session_id=session_id, 
                 new_message=content
             )

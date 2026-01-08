@@ -35,15 +35,9 @@ from apache_beam import window
 from apache_beam.options.pipeline_options import PipelineOptions, SetupOptions
 from apache_beam.ml.agents.transforms import RunAgent
 
-# Graceful Fallback for ADK
-try:
-    from google.adk.agents import Agent
-    from google.adk.tools import FunctionTool
-    from google.genai import types
-except ImportError:
-    Agent = None
-    FunctionTool = None
-    types = None
+from google.adk.agents import Agent
+from google.adk.tools import FunctionTool
+from google.genai import types
 
 # --- Domain Objects ---
 class LogEntry(typing.NamedTuple):
@@ -87,16 +81,14 @@ class GenerateLogs(beam.DoFn):
 # --- SRE Tools ---
 def get_service_health(service_name: str) -> dict:
     """Checks CPU/Memory usage."""
-    print("Checking service health for: " + service_name)
     if service_name == "PaymentService":
         return {"cpu": "15%", "memory": "40%", "status": "nominal"}
     return {"cpu": "20%", "status": "nominal"}
 
 def get_recent_deployments(service_name: str) -> dict:
     """Checks for recent deployments."""
-    print("Checking recent deployments for: " + service_name)
     if service_name == "PaymentService":
-        return {"last_deploy": "v2.4.0", "time": "5 minutes ago", "author": "junior_dev"}
+        return {"last_deploy": "v2.4.0", "time": "5 minutes ago", "author": "tarun"}
     return {"last_deploy": "v1.2.0", "time": "2 days ago"}
 
 def query_error_logs(service_name: str, limit: int = 3) -> list:
@@ -109,15 +101,9 @@ def query_error_logs(service_name: str, limit: int = 3) -> list:
         ]
     return []
 
-# --- Agent Factory ---
-
-
 # --- Pipeline ---
 def run(argv=None):
-    if not Agent:
-        logging.error("google-adk not installed. Please install it to run this demo.")
-        return
-
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("--project", help="GCP Project")
     known_args, pipeline_args = parser.parse_known_args(argv)
@@ -171,6 +157,7 @@ def run(argv=None):
 
         agent_results = (
             inputs
+            | "GlobalWindow" >> beam.WindowInto(window.GlobalWindows())
             | "SRE Detective Agent" >> RunAgent(
                 model_name="gemini-2.0-flash",
                 project=known_args.project,

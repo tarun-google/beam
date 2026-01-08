@@ -63,9 +63,11 @@ class RunAgentTest(unittest.TestCase):
         mock_adk_sessions.InMemorySessionService.return_value = mock_session_service
         # create_session must be awaitable
         mock_session_service.create_session = AsyncMock()
+        mock_session_service.get_session = AsyncMock()
         
         mock_runner = MagicMock()
         mock_adk_runners.Runner.return_value = mock_runner
+        mock_runner.session_service = mock_session_service
         
         mock_event = MagicMock()
         mock_event.is_final_response.return_value = True
@@ -103,18 +105,27 @@ class RunAgentTest(unittest.TestCase):
             self.assertEqual(os.environ['GOOGLE_CLOUD_LOCATION'], 'test-location')
         
         # 2. PROCESS (No Key = Random Session)
-        results = list(dofn.process("Query"))
+        mock_state = MagicMock()
+        mock_state.read.return_value = None
+        
+        results = list(dofn.process("Query", session_state=mock_state))
         
         # Verify Execution
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].final_text, "Result")
         
         # Verify runner.run called
-        mock_runner.run.assert_called_once()
+        mock_runner.run.assert_called_once()  
+        
+        # Verify state read and written
+        mock_state.read.assert_called_once()
+        mock_state.write.assert_called_once()
         
         # 3. PROCESS (Keyed Input = Session ID)
         mock_runner.run.reset_mock()
-        results_keyed = list(dofn.process(("user-session-123", "Query")))
+        mock_state.reset_mock()
+        
+        results_keyed = list(dofn.process(("user-session-123", "Query"), session_state=mock_state))
         
         self.assertEqual(len(results_keyed), 1)
         self.assertEqual(results_keyed[0].session_id, "user-session-123")
@@ -122,6 +133,10 @@ class RunAgentTest(unittest.TestCase):
         # Verify runner.run called with correct session
         call_kwargs = mock_runner.run.call_args[1]
         self.assertEqual(call_kwargs['session_id'], "user-session-123")
+        
+        # Verify state interactions again
+        mock_state.read.assert_called_once()
+        mock_state.write.assert_called_once()
 
 if __name__ == '__main__':
     unittest.main()
