@@ -61,8 +61,8 @@ class GenerateLogs(beam.DoFn):
         services = ["AuthService", "PaymentService", "Frontend"]
         start_time = time.time()
         
-        # Emit 100 logs
-        for i in range(100):
+        # Emit 200 logs
+        for i in range(200):
             timestamp = start_time + (i * 0.1)  # 10 logs/sec simulated
             service = random.choice(services)
             level = "INFO"
@@ -72,6 +72,18 @@ class GenerateLogs(beam.DoFn):
             if service == "PaymentService" and i > 50:
                 level = "ERROR"
                 msg = "503 Service Unavailable: Connection Refused"
+
+            # Simulate Multi-Stage Incident for ImageProcessingService (Memory Leak)
+            # T=8s (i=80) -> Warning
+            if 80 <= i < 100:
+                service = "ImageProcessingService"
+                level = "ERROR"
+                msg = "WARNING: Memory usage at 95% (Risk of OOM)"
+            # T=12s (i=120) -> Crash
+            elif 120 <= i < 140:
+                service = "ImageProcessingService"
+                level = "ERROR"
+                msg = "CRITICAL: Process crashed: OOMKilled"
             
             yield beam.window.TimestampedValue(
                 LogEntry(timestamp, service, level, msg),
@@ -83,12 +95,16 @@ def get_service_health(service_name: str) -> dict:
     """Checks CPU/Memory usage."""
     if service_name == "PaymentService":
         return {"cpu": "15%", "memory": "40%", "status": "nominal"}
+    if service_name == "ImageProcessingService":
+        return {"cpu": "80%", "memory": "99%", "status": "critical"}
     return {"cpu": "20%", "status": "nominal"}
 
 def get_recent_deployments(service_name: str) -> dict:
     """Checks for recent deployments."""
     if service_name == "PaymentService":
         return {"last_deploy": "v2.4.0", "time": "5 minutes ago", "author": "tarun"}
+    if service_name == "ImageProcessingService":
+        return {"last_deploy": "v1.5.0", "time": "1 hour ago", "author": "devops"}
     return {"last_deploy": "v1.2.0", "time": "2 days ago"}
 
 def query_error_logs(service_name: str, limit: int = 3) -> list:
@@ -99,13 +115,19 @@ def query_error_logs(service_name: str, limit: int = 3) -> list:
             "Retry exhausted after 3 attempts",
             "Transaction rollback failed"
         ]
+    if service_name == "ImageProcessingService":
+       return [
+            "java.lang.OutOfMemoryError: Java heap space",
+            "Process OOMKilled by kernel",
+            "CRASH REPORT: Dump saved to /tmp/core.1234"
+       ]
     return []
 
 # --- Pipeline ---
 def run(argv=None):
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--project", help="GCP Project")
+    parser.add_argument("--src", help="GCP Project")
     known_args, pipeline_args = parser.parse_known_args(argv)
     pipeline_options = PipelineOptions(pipeline_args)
     pipeline_options.view_as(SetupOptions).save_main_session = True
@@ -157,10 +179,9 @@ def run(argv=None):
 
         agent_results = (
             inputs
-            | "GlobalWindow" >> beam.WindowInto(window.GlobalWindows())
             | "SRE Detective Agent" >> RunAgent(
                 model_name="gemini-2.0-flash",
-                project=known_args.project,
+                project=known_args.src,
                 location="us-central1",
                 tools=[get_service_health, get_recent_deployments, query_error_logs],
                 instruction="""
