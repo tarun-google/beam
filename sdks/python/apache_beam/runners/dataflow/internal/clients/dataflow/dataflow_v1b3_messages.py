@@ -4479,6 +4479,7 @@ class Package(_messages.Message):
 
   location = _messages.StringField(1)
   name = _messages.StringField(2)
+  checksum = _messages.StringField(3)
 
 
 class ParDoInstruction(_messages.Message):

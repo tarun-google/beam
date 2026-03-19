@@ -83,6 +83,22 @@ func newMaterializeWithClient(ctx context.Context, client jobpb.ArtifactRetrieva
 		return nil, err
 	}
 
+	log.Printf("Tarun ResolveArtifacts returned %d replacements", len(resolution.Replacements))
+	for r_i, dep := range resolution.Replacements {
+		log.Printf("Tarun  [%d] TypeUrn: %s, RoleUrn: %s", r_i, dep.TypeUrn, dep.RoleUrn)
+		if dep.TypeUrn == URNFileArtifact {
+			typePayload := pipepb.ArtifactFilePayload{}
+			if err := proto.Unmarshal(dep.TypePayload, &typePayload); err == nil {
+				log.Printf("Tarun    FilePayload: Path=%s, Sha256=%s", typePayload.Path, typePayload.Sha256)
+			}
+		} else if dep.TypeUrn == URNUrlArtifact {
+			typePayload := pipepb.ArtifactUrlPayload{}
+			if err := proto.Unmarshal(dep.TypePayload, &typePayload); err == nil {
+				log.Printf("Tarun    UrlPayload: Url=%s, Sha256=%s", typePayload.Url, typePayload.Sha256)
+			}
+		}
+	}
+
 	var artifacts []*pipepb.ArtifactInformation
 	var list []retrievable
 	for _, dep := range resolution.Replacements {
@@ -268,6 +284,11 @@ func legacyMaterialize(ctx context.Context, endpoint string, rt string, dest str
 		return nil, errors.Wrap(err, "failed to get manifest")
 	}
 	mds := m.GetManifest().GetArtifact()
+
+	log.Printf("Tarun Legacy GetManifest returned %d artifacts", len(mds))
+	for m_i, md := range mds {
+		log.Printf("Tarun  [%d] Name: %s, Sha256: %s, Permissions: %o", m_i, md.Name, md.Sha256, md.Permissions)
+	}
 
 	var artifacts []*pipepb.ArtifactInformation
 	var list []retrievable

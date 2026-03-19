@@ -170,13 +170,32 @@ class Environment(object):
     # Worker pool(s) information.
     package_descriptors = []
     for package in packages:
-      package_descriptors.append(
-          dataflow.Package(
-              location='%s/%s' % (
-                  self.google_cloud_options.staging_location.replace(
-                      'gs:/', GoogleCloudOptions.STORAGE_API_SERVICE),
-                  package),
-              name=package))
+      if isinstance(package, str):
+        pkg_name = package
+        pkg_checksum = None
+      elif isinstance(package, tuple) and len(package) == 2:
+        pkg_name, pkg_checksum = package
+      else:
+        pkg_name = package
+        pkg_checksum = None
+
+      if pkg_checksum:
+        package_descriptors.append(
+            dataflow.Package(
+                location='%s/%s' % (
+                    self.google_cloud_options.staging_location.replace(
+                        'gs:/', GoogleCloudOptions.STORAGE_API_SERVICE),
+                    pkg_name),
+                name=pkg_name,
+                checksum=pkg_checksum))
+      else:
+        package_descriptors.append(
+            dataflow.Package(
+                location='%s/%s' % (
+                    self.google_cloud_options.staging_location.replace(
+                        'gs:/', GoogleCloudOptions.STORAGE_API_SERVICE),
+                    pkg_name),
+                name=pkg_name))
 
     pool = dataflow.WorkerPool(
         kind='local' if self.local else 'harness',
@@ -645,9 +664,9 @@ class DataflowApplicationClient(object):
               sha256=type_payload.sha256).SerializeToString()
 
     resource_stager = _LegacyDataflowStager(self)
-    staged_resources = resource_stager.stage_job_resources(
+    resource_stager.stage_job_resources(
         resources, staging_location=google_cloud_options.staging_location)
-    return staged_resources
+    return [(remote_name, sha256) for _, remote_name, sha256 in resources]
 
   def stage_file(
       self,
