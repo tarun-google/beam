@@ -160,9 +160,9 @@ func main() {
 		logger.Fatalf(ctx, "Failed to convert pipeline options: %v", err)
 	}
 	logger.Printf(ctx, "Pipeline options: %v", options)
-	var optMap map[string]any
-	if err := json.Unmarshal([]byte(options), &optMap); err == nil {
-		if hash, ok := optMap["worker_sha256"].(string); ok && hash != "" {
+	var opt runtime.RawOptionsWrapper
+	if err := json.Unmarshal([]byte(options), &opt); err == nil {
+		if hash, ok := opt.Options.Options["worker_sha256"]; ok && hash != "" {
 			ctx = artifact.WithWorkerHash(ctx, hash)
 			logger.Printf(ctx, "Securely loaded worker_sha256 from options: %s", hash)
 		}
