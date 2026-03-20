@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/internal/errors"
+	beam_log "github.com/apache/beam/sdks/v2/go/pkg/beam/log"
 	jobpb "github.com/apache/beam/sdks/v2/go/pkg/beam/model/jobmanagement_v1"
 	pipepb "github.com/apache/beam/sdks/v2/go/pkg/beam/model/pipeline_v1"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/util/errorx"
@@ -265,6 +266,7 @@ func writeChunks(stream jobpb.ArtifactRetrievalService_GetArtifactClient, w io.W
 }
 
 func legacyMaterialize(ctx context.Context, endpoint string, rt string, dest string) ([]*pipepb.ArtifactInformation, error) {
+	beam_log.Infof(ctx, "Legacy Materialize: endpoint=%v, rt=%v, dest=%v", endpoint, rt, dest)
 	cc, err := grpcx.Dial(ctx, endpoint, 2*time.Minute)
 	if err != nil {
 		return nil, err
@@ -274,6 +276,7 @@ func legacyMaterialize(ctx context.Context, endpoint string, rt string, dest str
 	client := jobpb.NewLegacyArtifactRetrievalServiceClient(cc)
 
 	m, err := client.GetManifest(ctx, &jobpb.GetManifestRequest{RetrievalToken: rt})
+	beam_log.Infof(ctx, "Legacy Materialize manifest: %v", m)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get manifest")
 	}
@@ -282,7 +285,7 @@ func legacyMaterialize(ctx context.Context, endpoint string, rt string, dest str
 	var artifacts []*pipepb.ArtifactInformation
 	var list []retrievable
 	for _, md := range mds {
-		log.Printf("Legacy Materialize Processing Artifact: %s (Sha256: %s)", md.Name, md.Sha256)
+		beam_log.Infof(ctx, "Legacy Materialize Processing Artifact: %s (Sha256: %s)", md.Name, md.Sha256)
 		typePayload, err := proto.Marshal(&pipepb.ArtifactFilePayload{
 			Path:   md.Name,
 			Sha256: md.Sha256,
