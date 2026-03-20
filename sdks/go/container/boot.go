@@ -160,6 +160,14 @@ func main() {
 		logger.Fatalf(ctx, "Failed to convert pipeline options: %v", err)
 	}
 
+	var optMap map[string]any
+	if err := json.Unmarshal([]byte(options), &optMap); err == nil {
+		if hash, ok := optMap["worker_sha256"].(string); ok && hash != "" {
+			ctx = artifact.WithWorkerHash(ctx, hash)
+			logger.Printf(ctx, "Securely loaded worker_sha256 from options: %s", hash)
+		}
+	}
+
 	// (2) Retrieve the staged files.
 	//
 	// The Go SDK harness downloads the worker binary and invokes

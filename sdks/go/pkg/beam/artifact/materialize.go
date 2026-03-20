@@ -286,6 +286,12 @@ func legacyMaterialize(ctx context.Context, endpoint string, rt string, dest str
 	var list []retrievable
 	for _, md := range mds {
 		beam_log.Infof(ctx, "Legacy Materialize Processing Artifact: %s (Sha256: %s)", md.Name, md.Sha256)
+		if md.Name == "worker" {
+			if expected, ok := ctx.Value(workerHashKey).(string); ok && expected != "" {
+				md.Sha256 = expected
+				beam_log.Infof(ctx, "Overriding worker SHA256 from Pipeline Options context: %s", expected)
+			}
+		}
 		typePayload, err := proto.Marshal(&pipepb.ArtifactFilePayload{
 			Path:   md.Name,
 			Sha256: md.Sha256,
@@ -524,4 +530,13 @@ func queue2slice(q chan *jobpb.ArtifactMetadata) []*jobpb.ArtifactMetadata {
 		ret = append(ret, elm)
 	}
 	return ret
+}
+
+type contextKey string
+
+const workerHashKey contextKey = "worker_sha256"
+
+// WithWorkerHash returns a new context with the expected worker SHA256 hash securely packed.
+func WithWorkerHash(ctx context.Context, hash string) context.Context {
+	return context.WithValue(ctx, workerHashKey, hash)
 }
