@@ -50,6 +50,7 @@ func ProvisionInfo(ctx context.Context, endpoint string) (*fnpb.ProvisionInfo, e
 	if resp.GetInfo() == nil {
 		return nil, errors.New("empty manifest")
 	}
+	fmt.Printf("Tarun ProvisionInfo: %v\n", resp.GetInfo())
 	return resp.GetInfo(), nil
 }
 
