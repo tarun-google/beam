@@ -31,6 +31,7 @@ import (
 	"github.com/apache/beam/sdks/v2/go/container/pool"
 	"github.com/apache/beam/sdks/v2/go/container/tools"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/artifact"
+	beam_log "github.com/apache/beam/sdks/v2/go/pkg/beam/log"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/core/runtime"
 
 	// Import gcs filesystem so that it can be used to upload heap dumps
@@ -149,6 +150,7 @@ func main() {
 		log.Fatalf("Endpoint not set: %v", err)
 	}
 	logger := &tools.Logger{Endpoint: *loggingEndpoint}
+	beam_log.SetLogger(&bootLogBridge{logger: logger})
 	logger.Printf(ctx, "Initializing Go harness: %v", strings.Join(os.Args, " "))
 
 	// (1) Obtain the pipeline options
@@ -310,4 +312,27 @@ func copyExe(from, to string) error {
 		return err
 	}
 	return dst.Close()
+}
+
+type bootLogBridge struct {
+	logger *tools.Logger
+}
+
+func (b *bootLogBridge) Log(ctx context.Context, sev beam_log.Severity, calldepth int, msg string) {
+	var fnpbSev fnpb.LogEntry_Severity_Enum
+	switch sev {
+	case beam_log.SevDebug:
+		fnpbSev = fnpb.LogEntry_Severity_DEBUG
+	case beam_log.SevInfo:
+		fnpbSev = fnpb.LogEntry_Severity_INFO
+	case beam_log.SevWarn:
+		fnpbSev = fnpb.LogEntry_Severity_WARN
+	case beam_log.SevError:
+		fnpbSev = fnpb.LogEntry_Severity_ERROR
+	case beam_log.SevFatal:
+		fnpbSev = fnpb.LogEntry_Severity_CRITICAL
+	default:
+		fnpbSev = fnpb.LogEntry_Severity_INFO
+	}
+	b.logger.Log(ctx, fnpbSev, msg)
 }
