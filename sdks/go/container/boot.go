@@ -31,8 +31,8 @@ import (
 	"github.com/apache/beam/sdks/v2/go/container/pool"
 	"github.com/apache/beam/sdks/v2/go/container/tools"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/artifact"
-	beam_log "github.com/apache/beam/sdks/v2/go/pkg/beam/log"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/core/runtime"
+	beam_log "github.com/apache/beam/sdks/v2/go/pkg/beam/log"
 
 	// Import gcs filesystem so that it can be used to upload heap dumps
 	_ "github.com/apache/beam/sdks/v2/go/pkg/beam/io/filesystem/gcs"
@@ -159,7 +159,7 @@ func main() {
 	if err != nil {
 		logger.Fatalf(ctx, "Failed to convert pipeline options: %v", err)
 	}
-
+	logger.Printf(ctx, "Pipeline options: %v", options)
 	var optMap map[string]any
 	if err := json.Unmarshal([]byte(options), &optMap); err == nil {
 		if hash, ok := optMap["worker_sha256"].(string); ok && hash != "" {
