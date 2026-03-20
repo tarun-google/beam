@@ -164,11 +164,17 @@ func main() {
 	// it. The binary is required to be keyed as "worker", if there
 	// are more than one artifact.
 
+	logger.Printf(ctx, "Starting Materialize with %d dependencies into dir: %v", len(info.GetDependencies()), *semiPersistDir)
+	for i, dep := range info.GetDependencies() {
+		logger.Printf(ctx, "Found Dependency[%d]: TypeUrn=%v, RoleUrn=%v", i, dep.GetTypeUrn(), dep.GetRoleUrn())
+	}
+
 	dir := filepath.Join(*semiPersistDir, "staged")
 	artifacts, err := artifact.Materialize(ctx, *artifactEndpoint, info.GetDependencies(), info.GetRetrievalToken(), dir)
 	if err != nil {
 		logger.Fatalf(ctx, "Failed to retrieve staged files: %v", err)
 	}
+	logger.Printf(ctx, "Materialize returned %d resolved artifacts", len(artifacts))
 
 	name, err := getGoWorkerArtifactName(ctx, logger, artifacts)
 	if err != nil {
