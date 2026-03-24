@@ -17,9 +17,11 @@ package gcsproxy
 
 import (
 	"io"
+	"log"
 
 	"cloud.google.com/go/storage"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/internal/errors"
+	beam_log "github.com/apache/beam/sdks/v2/go/pkg/beam/log"
 	jobpb "github.com/apache/beam/sdks/v2/go/pkg/beam/model/jobmanagement_v1"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/util/gcsx"
 	"golang.org/x/net/context"
@@ -36,6 +38,7 @@ type RetrievalServer struct {
 
 // ReadProxyManifest reads and parses the proxy manifest from GCS.
 func ReadProxyManifest(ctx context.Context, object string) (*jobpb.ProxyManifest, error) {
+	beam_log.Infof(ctx, "TarunLOG: ReadProxyManifest called: object=%v", object)
 	bucket, obj, err := gcsx.ParseObject(object)
 	if err != nil {
 		return nil, errors.Wrapf(err, "invalid manifest object %v", object)
@@ -59,6 +62,7 @@ func ReadProxyManifest(ctx context.Context, object string) (*jobpb.ProxyManifest
 // NewRetrievalServer creates a artifact retrieval server for the
 // given manifest. It requires that the locations are in GCS.
 func NewRetrievalServer(md *jobpb.ProxyManifest) (*RetrievalServer, error) {
+	log.Printf("TarunLOG: NewRetrievalServer called")
 	if err := validate(md); err != nil {
 		return nil, err
 	}
@@ -75,11 +79,14 @@ func NewRetrievalServer(md *jobpb.ProxyManifest) (*RetrievalServer, error) {
 
 // GetManifest returns the manifest for all artifacts.
 func (s *RetrievalServer) GetManifest(ctx context.Context, req *jobpb.GetManifestRequest) (*jobpb.GetManifestResponse, error) {
+	beam_log.Infof(ctx, "TarunLOG: GetManifest called: req=%v", req)
 	return &jobpb.GetManifestResponse{Manifest: s.md}, nil
 }
 
 // GetArtifact returns a given artifact.
 func (s *RetrievalServer) GetArtifact(req *jobpb.LegacyGetArtifactRequest, stream jobpb.LegacyArtifactRetrievalService_GetArtifactServer) error {
+	ctx := stream.Context()
+	beam_log.Infof(ctx, "TarunLOG: GetArtifact called: name=%v", req.GetName())
 	key := req.GetName()
 	blob, ok := s.blobs[key]
 	if !ok {
