@@ -1,0 +1,24 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  See the License for the specific language
+# under the License.
+#
+
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: ratelimit-monitoring
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: ratelimit
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 15s
