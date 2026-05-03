@@ -32,6 +32,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
+	structpb "google.golang.org/protobuf/types/known/structpb"
 )
 
 // TestRetrieve tests that we can successfully retrieve fresh files.
@@ -79,6 +80,57 @@ func TestMultiRetrieve(t *testing.T) {
 
 	for _, a := range artifacts {
 		verifySHA256(t, makeFilename(dst, a.Name), a.Sha256)
+	}
+}
+
+func TestRetrieveWithBadShaFails(t *testing.T) {
+	cc := startServer(t)
+	defer cc.Close()
+
+	ctx := grpcx.WriteWorkerID(context.Background(), "idA")
+	keys := []string{"foo"}
+	st := "whatever"
+	rt, artifacts := populate(ctx, cc, t, keys, 300, st)
+
+	dst := makeTempDir(t)
+	defer os.RemoveAll(dst)
+
+	client := jobpb.NewLegacyArtifactRetrievalServiceClient(cc)
+	for _, a := range artifacts {
+		a.Sha256 = "badhash" // mutate hash
+		if err := Retrieve(ctx, client, a, rt, dst); err == nil {
+			t.Errorf("expected materialization to fail due to bad sha256 mismatch")
+		}
+	}
+}
+
+func TestRetrieveWithBadShaAndExperimentSucceeds(t *testing.T) {
+	cc := startServer(t)
+	defer cc.Close()
+
+	options, _ := structpb.NewStruct(map[string]interface{}{
+		"options": map[string]interface{}{
+			"experiments": []interface{}{"disable_staged_file_integrity_checks"},
+		},
+	})
+	ctx := WithPipelineOptions(grpcx.WriteWorkerID(context.Background(), "idA"), options)
+	keys := []string{"foo"}
+	st := "whatever"
+	rt, artifacts := populate(ctx, cc, t, keys, 300, st)
+
+	dst := makeTempDir(t)
+	defer os.RemoveAll(dst)
+
+	client := jobpb.NewLegacyArtifactRetrievalServiceClient(cc)
+	for _, a := range artifacts {
+		originalHash := a.Sha256
+		a.Sha256 = "badhash" // mutate hash
+		filename := makeFilename(dst, a.Name)
+		if err := Retrieve(ctx, client, a, rt, dst); err != nil {
+			t.Errorf("materialize failed but should have succeeded because validation was disabled via experiment: %v", err)
+			continue
+		}
+		verifySHA256(t, filename, originalHash)
 	}
 }
 
@@ -266,6 +318,65 @@ func TestNewRetrieveWithResolution(t *testing.T) {
 	checkStagedFiles(mds, dest, expected, t)
 }
 
+func TestIsArtifactValidationEnabled(t *testing.T) {
+	ctx := context.Background()
+	if !isArtifactValidationEnabled(ctx) {
+		t.Errorf("empty context should have validation enabled")
+	}
+
+	options, _ := structpb.NewStruct(map[string]interface{}{
+		"options": map[string]interface{}{
+			"experiments": []interface{}{"disable_staged_file_integrity_checks"},
+		},
+	})
+	ctx2 := WithPipelineOptions(ctx, options)
+	if isArtifactValidationEnabled(ctx2) {
+		t.Errorf("populated context should have validation disabled")
+	}
+}
+
+func TestNewRetrieveWithBadShaFails(t *testing.T) {
+	expected := map[string]string{"a.txt": "a"}
+	client := &fakeRetrievalService{artifacts: expected}
+	dest := makeTempDir(t)
+	defer os.RemoveAll(dest)
+	ctx := grpcx.WriteWorkerID(context.Background(), "worker")
+
+	_, err := newMaterializeWithClient(ctx, client, client.fileArtifactsWithBadSha(), dest)
+	if err == nil {
+		t.Fatalf("expected materialization to fail due to bad sha256 mismatch")
+	}
+}
+
+func TestNewRetrieveWithBadShaAndExperimentSucceeds(t *testing.T) {
+	expected := map[string]string{"a.txt": "a"}
+	client := &fakeRetrievalService{artifacts: expected}
+	dest := makeTempDir(t)
+	defer os.RemoveAll(dest)
+
+	options, _ := structpb.NewStruct(map[string]interface{}{
+		"options": map[string]interface{}{
+			"experiments": []interface{}{"disable_staged_file_integrity_checks"},
+		},
+	})
+	ctx := WithPipelineOptions(grpcx.WriteWorkerID(context.Background(), "worker"), options)
+
+	mds, err := newMaterializeWithClient(ctx, client, client.fileArtifactsWithBadSha(), dest)
+	if err != nil {
+		t.Fatalf("materialize failed but should have succeeded because validation was disabled via experiment: %v", err)
+	}
+
+	generated := make(map[string]string)
+	for _, md := range mds {
+		name, _ := MustExtractFilePayload(md)
+		payload, _ := proto.Marshal(&pipepb.ArtifactStagingToRolePayload{
+			StagedName: name})
+		generated[name] = string(payload)
+	}
+
+	checkStagedFiles(mds, dest, generated, t)
+}
+
 func checkStagedFiles(mds []*pipepb.ArtifactInformation, dest string, expected map[string]string, t *testing.T) {
 	if len(mds) != len(expected) {
 		t.Errorf("wrong number of artifacts staged %v vs %v", len(mds), len(expected))
@@ -315,6 +426,21 @@ func (fake *fakeRetrievalService) fileArtifactsWithoutStagingTo() []*pipepb.Arti
 	for name := range fake.artifacts {
 		payload, _ := proto.Marshal(&pipepb.ArtifactFilePayload{
 			Path: filepath.Join("/tmp", name)})
+		artifacts = append(artifacts, &pipepb.ArtifactInformation{
+			TypeUrn:     URNFileArtifact,
+			TypePayload: payload,
+		})
+	}
+	return artifacts
+}
+
+func (fake *fakeRetrievalService) fileArtifactsWithBadSha() []*pipepb.ArtifactInformation {
+	var artifacts []*pipepb.ArtifactInformation
+	for name := range fake.artifacts {
+		payload, _ := proto.Marshal(&pipepb.ArtifactFilePayload{
+			Path:   filepath.Join("/tmp", name),
+			Sha256: "badhash",
+		})
 		artifacts = append(artifacts, &pipepb.ArtifactInformation{
 			TypeUrn:     URNFileArtifact,
 			TypePayload: payload,

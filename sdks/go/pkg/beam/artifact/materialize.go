@@ -39,6 +39,7 @@ import (
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/util/errorx"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/util/grpcx"
 	"google.golang.org/protobuf/proto"
+	structpb "google.golang.org/protobuf/types/known/structpb"
 )
 
 // TODO(lostluck): 2018/05/28 Extract these from their enum descriptors in the pipeline_v1 proto
@@ -131,6 +132,7 @@ func newMaterializeWithClient(ctx context.Context, client jobpb.ArtifactRetrieva
 				RoleUrn:     URNStagingTo,
 				RolePayload: rolePayload,
 			},
+			expectedSha256: filePayload.Sha256,
 		})
 	}
 
@@ -183,8 +185,9 @@ func MustExtractFilePayload(artifact *pipepb.ArtifactInformation) (string, strin
 }
 
 type artifact struct {
-	client jobpb.ArtifactRetrievalServiceClient
-	dep    *pipepb.ArtifactInformation
+	client         jobpb.ArtifactRetrievalServiceClient
+	dep            *pipepb.ArtifactInformation
+	expectedSha256 string
 }
 
 func (a artifact) retrieve(ctx context.Context, dest string) error {
@@ -231,7 +234,15 @@ func (a artifact) retrieve(ctx context.Context, dest string) error {
 	stat, _ := fd.Stat()
 	log.Printf("Downloaded: %v (sha256: %v, size: %v)", filename, sha256Hash, stat.Size())
 
-	return fd.Close()
+	if err := fd.Close(); err != nil {
+		return err
+	}
+
+	if isArtifactValidationEnabled(ctx) && a.expectedSha256 != "" && sha256Hash != a.expectedSha256 {
+		return errors.Errorf("bad SHA256 for %v: %v, want %v", filename, sha256Hash, a.expectedSha256)
+	}
+
+	return nil
 }
 
 func writeChunks(stream jobpb.ArtifactRetrievalService_GetArtifactClient, w io.Writer) (string, error) {
@@ -442,7 +453,7 @@ func retrieve(ctx context.Context, client jobpb.LegacyArtifactRetrievalServiceCl
 	}
 
 	// Artifact Sha256 hash is an optional field in metadata so we should only validate when its present.
-	if a.Sha256 != "" && sha256Hash != a.Sha256 {
+	if isArtifactValidationEnabled(ctx) && a.Sha256 != "" && sha256Hash != a.Sha256 {
 		return errors.Errorf("bad SHA256 for %v: %v, want %v", filename, sha256Hash, a.Sha256)
 	}
 	return nil
@@ -510,4 +521,26 @@ func queue2slice(q chan *jobpb.ArtifactMetadata) []*jobpb.ArtifactMetadata {
 		ret = append(ret, elm)
 	}
 	return ret
+}
+
+type contextKey string
+
+const pipelineOptionsKey contextKey = "pipeline_options"
+
+// WithPipelineOptions returns a new context carrying the full pipeline options struct.
+func WithPipelineOptions(ctx context.Context, options *structpb.Struct) context.Context {
+	return context.WithValue(ctx, pipelineOptionsKey, options)
+}
+
+// isArtifactValidationEnabled parses pipeline options to check if "disable_integrity_checks" is enabled.
+func isArtifactValidationEnabled(ctx context.Context) bool {
+	options, _ := ctx.Value(pipelineOptionsKey).(*structpb.Struct)
+	if options != nil {
+		for _, v := range options.GetFields()["options"].GetStructValue().GetFields()["experiments"].GetListValue().GetValues() {
+			if v.GetStringValue() == "disable_staged_file_integrity_checks" {
+				return false
+			}
+		}
+	}
+	return true
 }
