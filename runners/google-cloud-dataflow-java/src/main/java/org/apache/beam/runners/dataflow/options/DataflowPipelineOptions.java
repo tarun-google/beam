@@ -179,18 +179,6 @@ public interface DataflowPipelineOptions
 
   void setLabels(Map<String, String> labels);
 
-  /** The URL of the staged portable pipeline. */
-  @Description("The URL of the staged portable pipeline")
-  String getPipelineUrl();
-
-  void setPipelineUrl(String urlString);
-
-  /** The hex-encoded SHA256 hash of the staged portable pipeline proto. */
-  @Description("The hex-encoded SHA256 hash of the staged portable pipeline proto")
-  String getPipelineProtoHash();
-
-  void setPipelineProtoHash(String hash);
-
   @Description("The customized dataflow worker jar")
   String getDataflowWorkerJar();
 

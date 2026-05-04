@@ -1366,10 +1366,10 @@ public class DataflowRunner extends PipelineRunner<DataflowPipelineJob> {
 
     DataflowPackage stagedPipeline =
         options.getStager().stageToFile(serializedProtoPipeline, PIPELINE_FILE_NAME);
-    dataflowOptions.setPipelineUrl(stagedPipeline.getLocation());
+    options.as(SdkHarnessOptions.class).setPipelineUrl(stagedPipeline.getLocation());
 
     String pipelineProtoHash = Hashing.sha256().hashBytes(serializedProtoPipeline).toString();
-    dataflowOptions.setPipelineProtoHash(pipelineProtoHash);
+    options.as(SdkHarnessOptions.class).setPipelineProtoHash(pipelineProtoHash);
 
     if (useUnifiedWorker(options)) {
       LOG.info("Skipping v1 transform replacements since job will run on v2.");
