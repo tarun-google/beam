@@ -56,6 +56,7 @@ import org.apache.beam.sdk.schemas.logicaltypes.UnknownLogicalType;
 import org.apache.beam.sdk.schemas.logicaltypes.VariableBytes;
 import org.apache.beam.sdk.schemas.logicaltypes.VariableString;
 import org.apache.beam.sdk.values.Row;
+import org.apache.beam.sdk.values.variant.Variant;
 import org.apache.beam.vendor.grpc.v1p69p0.com.google.protobuf.ByteString;
 import org.apache.beam.vendor.guava.v32_1_2_jre.com.google.common.collect.ImmutableList;
 import org.joda.time.Instant;
@@ -145,6 +146,7 @@ public class SchemaTranslationTest {
           .add(Schema.of(Field.of("fixed_bytes", FieldType.logicalType(FixedBytes.of(24)))))
           .add(Schema.of(Field.of("micros_instant", FieldType.logicalType(new MicrosInstant()))))
           .add(Schema.of(Field.of("date", FieldType.logicalType(SqlTypes.DATE))))
+          .add(Schema.of(Field.of("variant", FieldType.logicalType(SqlTypes.VARIANT))))
           .add(Schema.of(Field.of("python_callable", FieldType.logicalType(new PythonCallable()))))
           .add(
               Schema.of(
@@ -392,6 +394,10 @@ public class SchemaTranslationTest {
           .add(simpleRow(FieldType.logicalType(new PortableNullArgLogicalType()), "str"))
           .add(simpleRow(FieldType.logicalType(new DateTime()), LocalDateTime.of(2000, 1, 3, 3, 1)))
           .add(simpleRow(FieldType.logicalType(SqlTypes.DATE), LocalDate.of(2000, 1, 3)))
+          .add(
+              simpleRow(
+                  FieldType.logicalType(SqlTypes.VARIANT),
+                  Variant.parseJson("{\"a\": [1, \"b\", null], \"c\": {\"d\": 2.5}}")))
           .add(simpleNullRow(FieldType.STRING))
           .add(simpleNullRow(FieldType.INT32))
           .add(simpleNullRow(FieldType.map(FieldType.STRING, FieldType.INT32)))
@@ -454,6 +460,7 @@ public class SchemaTranslationTest {
           .add(FieldType.logicalType(SqlTypes.TIME))
           .add(FieldType.logicalType(SqlTypes.DATETIME))
           .add(FieldType.logicalType(SqlTypes.TIMESTAMP))
+          .add(FieldType.logicalType(SqlTypes.VARIANT))
           .add(FieldType.logicalType(new NanosInstant()))
           .add(FieldType.logicalType(new NanosDuration()))
           .add(FieldType.logicalType(FixedBytes.of(10)))

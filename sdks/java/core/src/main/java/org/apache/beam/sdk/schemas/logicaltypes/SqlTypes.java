@@ -24,6 +24,7 @@ import java.time.LocalTime;
 import java.util.UUID;
 import org.apache.beam.sdk.schemas.Schema.LogicalType;
 import org.apache.beam.sdk.values.Row;
+import org.apache.beam.sdk.values.variant.Variant;
 
 /** Beam {@link org.apache.beam.sdk.schemas.Schema.LogicalType}s corresponding to SQL data types. */
 public class SqlTypes {
@@ -44,4 +45,10 @@ public class SqlTypes {
 
   /** Beam LogicalType corresponding to UUID type. */
   public static final LogicalType<UUID, Row> UUID = new UuidLogicalType();
+
+  /**
+   * Beam LogicalType for semi-structured data, corresponding to the VARIANT type of Apache Parquet,
+   * Apache Iceberg, Apache Spark and Apache Flink.
+   */
+  public static final LogicalType<Variant, Row> VARIANT = new VariantLogicalType();
 }

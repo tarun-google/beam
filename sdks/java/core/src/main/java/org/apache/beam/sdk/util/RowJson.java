@@ -70,6 +70,7 @@ import org.apache.beam.sdk.schemas.Schema.TypeName;
 import org.apache.beam.sdk.schemas.logicaltypes.SqlTypes;
 import org.apache.beam.sdk.util.RowJsonValueExtractors.ValueExtractor;
 import org.apache.beam.sdk.values.Row;
+import org.apache.beam.sdk.values.variant.Variant;
 import org.apache.beam.vendor.guava.v32_1_2_jre.com.google.common.collect.ImmutableList;
 import org.apache.beam.vendor.guava.v32_1_2_jre.com.google.common.collect.ImmutableMap;
 import org.apache.beam.vendor.guava.v32_1_2_jre.com.google.common.collect.ImmutableSet;
@@ -105,7 +106,8 @@ public class RowJson {
       ImmutableSet.of(
           SqlTypes.DATE.getIdentifier(),
           SqlTypes.TIME.getIdentifier(),
-          SqlTypes.DATETIME.getIdentifier());
+          SqlTypes.DATETIME.getIdentifier(),
+          SqlTypes.VARIANT.getIdentifier());
 
   /**
    * Throws {@link UnsupportedRowJsonException} if {@code schema} contains an unsupported field
@@ -303,6 +305,10 @@ public class RowJson {
           throw new UnsupportedRowJsonException(
               "Non-nullable field '" + fieldValue.name() + "' is not present in the JSON object.");
         } else if (fieldValue.isJsonNull()) {
+          if (isVariant(fieldValue.type())) {
+            // Unlike other types, a Variant can hold a JSON null itself.
+            return Variant.ofNull();
+          }
           throw new UnsupportedRowJsonException(
               "Non-nullable field '" + fieldValue.name() + "' has value null in the JSON object.");
         }
@@ -328,6 +334,8 @@ public class RowJson {
           return timeValueExtractor().extractValue(fieldValue.jsonValue());
         } else if (SqlTypes.DATETIME.getIdentifier().equals(identifier)) {
           return localDatetimeValueExtractor().extractValue(fieldValue.jsonValue());
+        } else if (SqlTypes.VARIANT.getIdentifier().equals(identifier)) {
+          return jsonNodeToVariant(fieldValue.name(), fieldValue.jsonValue());
         } else {
           return extractJsonNodeValue(
               FieldValue.of(
@@ -338,6 +346,21 @@ public class RowJson {
       }
 
       return extractJsonPrimitiveValue(fieldValue);
+    }
+
+    private static boolean isVariant(FieldType type) {
+      return type.getTypeName().isLogicalType()
+          && SqlTypes.VARIANT.getIdentifier().equals(type.getLogicalType().getIdentifier());
+    }
+
+    /** Captures a whole JSON subtree as a Variant, keeping its structure and value types. */
+    private static Variant jsonNodeToVariant(String fieldName, JsonNode node) {
+      try {
+        return Variant.parseJson(node.toString());
+      } catch (IllegalArgumentException e) {
+        throw new UnsupportedRowJsonException(
+            "Unable to convert field '" + fieldName + "' to a Variant: " + e.getMessage(), e);
+      }
     }
 
     private Row jsonObjectToRow(FieldValue rowFieldValue) {
@@ -609,6 +632,8 @@ public class RowJson {
             gen.writeString(((LocalTime) value).toString()); // ISO 8601 format
           } else if (SqlTypes.DATETIME.getIdentifier().equals(identifier)) {
             gen.writeString(((LocalDateTime) value).toString()); // ISO 8601 format
+          } else if (SqlTypes.VARIANT.getIdentifier().equals(identifier)) {
+            gen.writeRawValue(((Variant) value).toJson()); // nested JSON, not a string
           } else {
             writeValue(gen, type.getLogicalType().getBaseType(), value);
           }

@@ -40,6 +40,7 @@ import org.apache.beam.sdk.schemas.logicaltypes.EnumerationType;
 import org.apache.beam.sdk.schemas.logicaltypes.NanosInstant;
 import org.apache.beam.sdk.schemas.logicaltypes.SqlTypes;
 import org.apache.beam.sdk.values.TypeDescriptor;
+import org.apache.beam.sdk.values.variant.Variant;
 import org.apache.beam.vendor.guava.v32_1_2_jre.com.google.common.collect.ImmutableMap;
 import org.joda.time.ReadableInstant;
 
@@ -194,6 +195,8 @@ public class StaticSchemaInference {
       return FieldType.logicalType(new NanosInstant());
     } else if (type.getRawType().equals(UUID.class)) {
       return FieldType.logicalType(SqlTypes.UUID);
+    } else if (type.getRawType().equals(Variant.class)) {
+      return FieldType.logicalType(SqlTypes.VARIANT);
     } else if (type.isSubtypeOf(TypeDescriptor.of(ByteBuffer.class))) {
       return FieldType.BYTES;
     } else if (type.isSubtypeOf(TypeDescriptor.of(Iterable.class))) {

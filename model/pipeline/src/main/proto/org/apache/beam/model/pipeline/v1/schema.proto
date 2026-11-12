@@ -247,6 +247,16 @@ message LogicalTypes {
     //     e.g. -1.5s at precision 6 is {seconds: -2, subseconds: 500000}.
     TIMESTAMP = 9 [(org.apache.beam.model.pipeline.v1.beam_urn) =
       "beam:logical_type:timestamp:v1"];
+
+    // A URN for Variant type (semi-structured data)
+    //   - Representation type: ROW<metadata: BYTES, value: BYTES>
+    //   - A semi-structured value, like a JSON document but with a richer set
+    //     of primitive types. metadata and value use the Apache Parquet
+    //     Variant binary encoding, version 1:
+    //     https://github.com/apache/parquet-format/blob/master/VariantEncoding.md
+    //   - Language type: In Java, org.apache.beam.sdk.values.variant.Variant.
+    VARIANT = 10 [(org.apache.beam.model.pipeline.v1.beam_urn) =
+      "beam:logical_type:variant:v1"];
   }
 }
 
